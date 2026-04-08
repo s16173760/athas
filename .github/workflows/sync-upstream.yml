@@ -10,23 +10,31 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # ✅ Checkout
       - name: Checkout master
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: master
+          persist-credentials: false   # ⭐ Authorization !!
 
+      # ✅ Git Config
       - name: Configure Git
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
+      - name: Set authenticated origin
+        run: |
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
+
+      # ✅ upstream
       - name: Add upstream
         run: |
-          git remote add upstream https://github.com/DeepXiv/deepxiv_sdk.git
+          git remote add upstream https://github.com/athasdev/athas.git
           git fetch upstream
 
-      # ✅ Check updates
+      # ✅ updates
       - name: Check for updates
         run: |
           if git diff --quiet master upstream/master; then
@@ -35,8 +43,7 @@ jobs:
 
       - name: Stop if no changes
         if: env.NO_CHANGES == 'true'
-        run: |
-          echo "No upstream updates. Skip."
+        run: echo "No upstream updates. Skip."
 
       # ✅ rebase
       - name: Try rebase
@@ -46,16 +53,12 @@ jobs:
             echo "REBASE_FAILED=true" >> $GITHUB_ENV
           fi
 
-      # ✅ Resolve files
+      # ✅ protected
       - name: Resolve protected files
         if: env.REBASE_FAILED == 'true'
         run: |
-          # ⚠️ rebase theirs = self
+          # workflow
           git checkout --theirs .github/workflows/sync-upstream.yml || true
-
-          # 👉 not update
-          # git checkout --theirs config.yaml || true
-          # git checkout --theirs docker-compose.yml || true
 
           git add .
           git -c core.editor=true rebase --continue || echo "REBASE_FAILED=true" >> $GITHUB_ENV
@@ -66,7 +69,7 @@ jobs:
         run: |
           git push origin master --force-with-lease
 
-      # ❗ fallback: PR
+      # ❗ fallback：PR
       - name: Fallback PR branch
         if: env.REBASE_FAILED == 'true'
         run: |
@@ -75,10 +78,12 @@ jobs:
           git merge upstream/master || true
           git push origin sync-upstream --force
 
+      # ✅ PR
       - name: Open Pull Request
         if: env.REBASE_FAILED == 'true'
         uses: peter-evans/create-pull-request@v6
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}   # ⭐ token
           branch: sync-upstream
           base: master
           title: "⚠️ Sync upstream (manual review needed)"
